@@ -1,10 +1,16 @@
 import os
 import numpy as np
 import tensorflow as tf
+import random
+import sys
+import argparse
+import seaborn as sn
+import matplotlib.pyplot as plt
+
 from tensorflow import keras
 from tensorflow.keras.utils import to_categorical
-import random
-
+from math import e, floor, sqrt
+from statistics import mean
 
 random.seed(1618)
 np.random.seed(1618)
@@ -14,9 +20,9 @@ tf.random.set_seed(1618)
 #tf.logging.set_verbosity(tf.logging.ERROR)   # Uncomment for TF1.
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
-ALGORITHM = "guesser"
-#ALGORITHM = "tf_net"
-#ALGORITHM = "tf_conv"
+# ALGORITHM = "guesser"
+# ALGORITHM = "tf_net"
+ALGORITHM = "tf_conv"
 
 DATASET = "mnist_d"
 #DATASET = "mnist_f"
@@ -55,14 +61,38 @@ def guesserClassifier(xTest):
     return np.array(ans)
 
 
-def buildTFNeuralNet(x, y, eps = 6):
-    pass        #TODO: Implement a standard ANN here.
-    return None
+def buildTFNeuralNet(x, y, eps = 10, layers=[64], batch_size=64,dropout = False, dropRate = 0.2):
+    # print(x[-].shape,y[0].shape)
+    tf_nn = keras.Sequential()
+    # tf_nn.add(keras.layers.Flatten(input_shape=x[0].shape))
+    for num in layers:
+        tf_nn.add(keras.layers.Dense(num,activation='relu'))
+    if (dropout):
+        tf_nn.add(keras.layers.Dropout(dropRate))
+    
+    tf_nn.add(keras.layers.Dense(y.shape[1],activation='softmax'))
+
+    tf_nn.compile(optimizer='adam',loss='categorical_crossentropy',metrics=['accuracy'])
+    tf_nn.fit(x,y,batch_size=batch_size,epochs=eps)
+    return tf_nn
 
 
-def buildTFConvNet(x, y, eps = 10, dropout = True, dropRate = 0.2):
-    pass        #TODO: Implement a CNN here. dropout option is required.
-    return None
+def buildTFConvNet(x, y, eps = 10, batch_size=64,dropout = True, dropRate = 0.2):
+
+    # print((x.shape[1],x.shape[2],x.shape[3]))
+    tf_conv_nn = keras.Sequential()
+    tf_conv_nn.add(keras.layers.Conv2D(8,3,input_shape=(x.shape[1],x.shape[2],x.shape[3])))
+    tf_conv_nn.add(keras.layers.MaxPool2D(pool_size=2))
+    tf_conv_nn.add(keras.layers.Flatten())
+
+    tf_conv_nn.add(keras.layers.Dense(64, activation='relu'))
+    if (dropout):
+        tf_conv_nn.add(keras.layers.Dropout(dropRate))
+    tf_conv_nn.add(keras.layers.Dense(y.shape[1], activation='softmax'))
+
+    tf_conv_nn.compile(optimizer='adam',loss='categorical_crossentropy',metrics=['accuracy'])
+    tf_conv_nn.fit(x,y,batch_size=batch_size,epochs=eps)
+    return tf_conv_nn
 
 #=========================<Pipeline Functions>==================================
 
@@ -98,6 +128,11 @@ def preprocessData(raw):
     else:
         xTrainP = xTrain.reshape((xTrain.shape[0], IH, IW, IZ))
         xTestP = xTest.reshape((xTest.shape[0], IH, IW, IZ))
+    
+    # Normalize pixel values between 0-1
+    xTrainP = np.divide(xTrainP,255)
+    xTestP = np.divide(xTestP, 255)
+
     yTrainP = to_categorical(yTrain, NUM_CLASSES)
     yTestP = to_categorical(yTest, NUM_CLASSES)
     print("New shape of xTrain dataset: %s." % str(xTrainP.shape))
