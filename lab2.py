@@ -24,9 +24,9 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 # ALGORITHM = "tf_net"
 ALGORITHM = "tf_conv"
 
-# DATASET = "mnist_d"
+DATASET = "mnist_d"
 # DATASET = "mnist_f"
-DATASET = "cifar_10"
+# DATASET = "cifar_10"
 #DATASET = "cifar_100_f"
 #DATASET = "cifar_100_c"
 
@@ -89,46 +89,68 @@ def buildTFNeuralNet(x, y, eps = 10, layers=[64], batch_size=64,dropout = False,
     return tf_nn
 
 
-def buildTFConvNet(x, y, eps = 10, hidden_layers=[128],batch_size=64,dropout = True, dropRate = 0.2,convPoolSeq=1,convLayer=[64],convSize=[3],poolSize=[2], useVGG=True):
+def buildTFConvNet(x, y, eps = 20, hidden_layers=[256],batch_size=64,dropout = True, dropRate = 0.25,convPoolSeq=2,convLayer=[32,64],convSize=[5,5],poolSize=[2,2], saveCheckpoints=False,savePath=None,useVGG=False):
 
     # print((x.shape[1],x.shape[2],x.shape[3]))
+    if (saveCheckpoints):
+        print("Saving Weights during Training: Enabled")
+        cp_callback = [tf.keras.callbacks.ModelCheckpoint(filepath=savePath,save_weights_only=False,verbose=1)]
+    else:
+        print("Saving Weights during Training: Disabled")
+        cp_callback = None
     if (not useVGG):
-        tf_conv_nn = keras.Sequential()
-        for i in range(convPoolSeq):
-            tf_conv_nn.add(keras.layers.Conv2D(convLayer[i],convSize[i],activation='relu',input_shape=(x.shape[1],x.shape[2],x.shape[3])))
-            tf_conv_nn.add(keras.layers.MaxPool2D(pool_size=poolSize[i]))
+        if (os.path.exists(savePath)):
+            print("found checkpoint for mnist, loading weights...")
+            tf_conv_nn = keras.models.load_model(savePath)
+        else:
+            print("Saved Model Not found, training from beginning...")
+            tf_conv_nn = keras.Sequential()
+            for i in range(convPoolSeq):
+                if (i == 0):
+                    tf_conv_nn.add(keras.layers.Conv2D(convLayer[i],convSize[i],activation='relu',input_shape=(x.shape[1],x.shape[2],x.shape[3])))
+                else:
+                    tf_conv_nn.add(keras.layers.Conv2D(convLayer[i],convSize[i],activation='relu'))
+                tf_conv_nn.add(keras.layers.Conv2D(convLayer[i],convSize[i],activation='relu'))
+                tf_conv_nn.add(keras.layers.MaxPool2D(pool_size=poolSize[i],strides=(2,2)))
+                if (dropout):
+                    tf_conv_nn.add(keras.layers.Dropout(dropRate))
 
-        tf_conv_nn.add(keras.layers.Flatten())
+            tf_conv_nn.add(keras.layers.Flatten())
+            for num in hidden_layers:
+                tf_conv_nn.add(keras.layers.Dense(num, activation='relu'))
+            tf_conv_nn.add(keras.layers.BatchNormalization())
+            # if (dropout):
+            tf_conv_nn.add(keras.layers.Dropout(0.5))
+            tf_conv_nn.add(keras.layers.Dense(y.shape[1], activation='softmax'))
 
-        for num in hidden_layers:
-            tf_conv_nn.add(keras.layers.Dense(num, activation='relu'))
-        if (dropout):
-            tf_conv_nn.add(keras.layers.Dropout(dropRate))
-        tf_conv_nn.add(keras.layers.Dense(y.shape[1], activation='softmax'))
-
-        tf_conv_nn.compile(optimizer='adam',loss='categorical_crossentropy',metrics=['accuracy'])
-        tf_conv_nn.fit(x,y,batch_size=batch_size,epochs=eps)
+            tf_conv_nn.compile(optimizer='adam',loss='categorical_crossentropy',metrics=['accuracy'])
+        tf_conv_nn.fit(x,y,batch_size=batch_size,epochs=eps,callbacks=cp_callback)
         return tf_conv_nn
     else:
-        tf_vgg = keras.Sequential()
-        tf_vgg.add(keras.layers.Conv2D(32,3,activation='relu',kernel_initializer='he_uniform',input_shape=(x.shape[1],x.shape[2],x.shape[3])))
-        tf_vgg.add(keras.layers.Conv2D(32,3,activation='relu',kernel_initializer='he_uniform'))
-        tf_vgg.add(keras.layers.MaxPool2D(2))
-        
-        tf_vgg.add(keras.layers.Conv2D(64,3,activation='relu',kernel_initializer='he_uniform'))
-        tf_vgg.add(keras.layers.Conv2D(64,3,activation='relu',kernel_initializer='he_uniform'))
-        tf_vgg.add(keras.layers.MaxPool2D(2))
+        if (os.path.exists(savePath)):
+            print("found checkpoint for vgg, loading weights...")
+            tf_vgg = keras.models.load_model(savePath)
+        else:
+            print("Saved Model Not found, training from beginning...")
+            tf_vgg = keras.Sequential()
+            tf_vgg.add(keras.layers.Conv2D(32,3,activation='relu',kernel_initializer='he_uniform',input_shape=(x.shape[1],x.shape[2],x.shape[3])))
+            tf_vgg.add(keras.layers.Conv2D(32,3,activation='relu',kernel_initializer='he_uniform'))
+            tf_vgg.add(keras.layers.MaxPool2D(2))
+            
+            tf_vgg.add(keras.layers.Conv2D(64,3,activation='relu',kernel_initializer='he_uniform'))
+            tf_vgg.add(keras.layers.Conv2D(64,3,activation='relu',kernel_initializer='he_uniform'))
+            tf_vgg.add(keras.layers.MaxPool2D(2))
 
-        # tf_vgg.add(keras.layers.Conv2D(128,3,activation='relu',kernel_initializer='he_uniform'))
-        # tf_vgg.add(keras.layers.Conv2D(128,3,activation='relu',kernel_initializer='he_uniform'))
-        # tf_vgg.add(keras.layers.MaxPool2D(2))
+            # tf_vgg.add(keras.layers.Conv2D(128,3,activation='relu',kernel_initializer='he_uniform'))
+            # tf_vgg.add(keras.layers.Conv2D(128,3,activation='relu',kernel_initializer='he_uniform'))
+            # tf_vgg.add(keras.layers.MaxPool2D(2))
 
-        tf_vgg.add(keras.layers.Flatten())
-        tf_vgg.add(keras.layers.Dense(128, activation='relu'))
-        tf_vgg.add(keras.layers.Dense(y.shape[1], activation='softmax'))
-        
-        tf_vgg.compile(optimizer=keras.optimizers.SGD(lr=0.001, momentum=0.9), loss='categorical_crossentropy', metrics=['accuracy'])
-        tf_vgg.fit(x,y,batch_size=batch_size,epochs=eps)
+            tf_vgg.add(keras.layers.Flatten())
+            tf_vgg.add(keras.layers.Dense(128, activation='relu'))
+            tf_vgg.add(keras.layers.Dense(y.shape[1], activation='softmax'))
+            
+            tf_vgg.compile(optimizer=keras.optimizers.SGD(lr=0.001, momentum=0.9), loss='categorical_crossentropy', metrics=['accuracy'])
+        tf_vgg.fit(x,y,batch_size=batch_size,epochs=eps,callbacks=cp_callback)
 
 #=========================<Pipeline Functions>==================================
 
@@ -193,9 +215,16 @@ def trainModel(data,hyperParams=None):
         print("Building and training TF_CNN.")
         if hyperParams:
             if (hyperParams["useVGG"]):
-                return buildTFConvNet(xTrain,yTrain,eps=100, batch_size=64)
+                return buildTFConvNet(xTrain,yTrain,eps=hyperParams["eps"], batch_size=hyperParams["batch_size"],
+                                    saveCheckpoints=hyperParams["saveCheckpoints"],
+                                    savePath=hyperParams["savePath"])
             else:
-                return buildTFConvNet(xTrain,yTrain,eps=hyperParams["eps"],hidden_layers=hyperParams["hidden_layers"],batch_size=hyperParams["batch_size"],dropout=hyperParams["dropout"],dropRate=hyperParams["dropRate"],convPoolSeq=hyperParams["convPoolSeq"],convLayer=hyperParams["convLayer"],convSize=hyperParams["convSize"],poolSize=hyperParams["poolSize"])     
+                return buildTFConvNet(xTrain,yTrain,eps=hyperParams["eps"],hidden_layers=hyperParams["hidden_layers"],
+                                        batch_size=hyperParams["batch_size"],dropout=hyperParams["dropout"],
+                                        dropRate=hyperParams["dropRate"],convPoolSeq=hyperParams["convPoolSeq"],
+                                        convLayer=hyperParams["convLayer"],convSize=hyperParams["convSize"],
+                                        poolSize=hyperParams["poolSize"],saveCheckpoints=hyperParams["saveCheckpoints"],
+                                        savePath=hyperParams["savePath"])     
         return buildTFConvNet(xTrain, yTrain)
     else:
         raise ValueError("Algorithm not recognized.")
@@ -246,19 +275,30 @@ def main():
     if ("cifar" in DATASET):
         hyperParams = {
             "useVGG": True,
-            "eps": 7,
-            "hidden_layers": [128, 64],
+            "eps": 100,
             "batch_size": 64,
-            "dropout": True,
-            "dropRate": 0.15,
-            "convPoolSeq": 2,
-            "convLayer": [64,16],
-            "convSize": [2,2],
-            "poolSize": [2,1]
+            "saveCheckpoints": True,
+            "savePath": "./saved_models/vgg/vgg.h5"
         }
         model = trainModel(data[0],hyperParams)
     else:
-        model = trainModel(data[0])
+        hyperParams = {
+            "useVGG": False,
+            "eps": 20,
+            "hidden_layers": [256],
+            "batch_size": 64,
+            "dropout": True,
+            "dropRate": 0.25,
+            "convPoolSeq": 2,
+            "convLayer": [32,64],
+            "convSize": [5,5],
+            "poolSize": [2,2],
+            "saveCheckpoints": True,
+            "savePath": "./saved_models/mnist/mnist.h5"
+        }
+        model = trainModel(data[0],hyperParams)
+    # model = test_func(data[0][0],data[0][1])
+    # model = keras.models.load_model("./saved_models/vgg/vgg.h5")
     preds = runModel(data[1][0], model)
     evalResults(data[1], preds)
 
