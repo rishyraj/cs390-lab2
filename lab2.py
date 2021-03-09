@@ -24,9 +24,9 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 # ALGORITHM = "tf_net"
 ALGORITHM = "tf_conv"
 
-DATASET = "mnist_d"
-#DATASET = "mnist_f"
-#DATASET = "cifar_10"
+# DATASET = "mnist_d"
+# DATASET = "mnist_f"
+DATASET = "cifar_10"
 #DATASET = "cifar_100_f"
 #DATASET = "cifar_100_c"
 
@@ -43,11 +43,23 @@ elif DATASET == "mnist_f":
     IZ = 1
     IS = 784
 elif DATASET == "cifar_10":
-    pass                                 # TODO: Add this case.
+    NUM_CLASSES = 10
+    IH = 32
+    IW = 32
+    IZ = 3
+    IS = 32**2
 elif DATASET == "cifar_100_f":
-    pass                                 # TODO: Add this case.
+    NUM_CLASSES = 100
+    IH = 32
+    IW = 32
+    IZ = 3
+    IS = 32**2                                
 elif DATASET == "cifar_100_c":
-    pass                                 # TODO: Add this case.
+    NUM_CLASSES = 20
+    IH = 32
+    IW = 32
+    IZ = 3
+    IS = 32**2                               
 
 
 #=========================<Classifier Functions>================================
@@ -77,22 +89,46 @@ def buildTFNeuralNet(x, y, eps = 10, layers=[64], batch_size=64,dropout = False,
     return tf_nn
 
 
-def buildTFConvNet(x, y, eps = 10, batch_size=64,dropout = True, dropRate = 0.2):
+def buildTFConvNet(x, y, eps = 10, hidden_layers=[128],batch_size=64,dropout = True, dropRate = 0.2,convPoolSeq=1,convLayer=[64],convSize=[3],poolSize=[2], useVGG=True):
 
     # print((x.shape[1],x.shape[2],x.shape[3]))
-    tf_conv_nn = keras.Sequential()
-    tf_conv_nn.add(keras.layers.Conv2D(8,3,input_shape=(x.shape[1],x.shape[2],x.shape[3])))
-    tf_conv_nn.add(keras.layers.MaxPool2D(pool_size=2))
-    tf_conv_nn.add(keras.layers.Flatten())
+    if (not useVGG):
+        tf_conv_nn = keras.Sequential()
+        for i in range(convPoolSeq):
+            tf_conv_nn.add(keras.layers.Conv2D(convLayer[i],convSize[i],activation='relu',input_shape=(x.shape[1],x.shape[2],x.shape[3])))
+            tf_conv_nn.add(keras.layers.MaxPool2D(pool_size=poolSize[i]))
 
-    tf_conv_nn.add(keras.layers.Dense(64, activation='relu'))
-    if (dropout):
-        tf_conv_nn.add(keras.layers.Dropout(dropRate))
-    tf_conv_nn.add(keras.layers.Dense(y.shape[1], activation='softmax'))
+        tf_conv_nn.add(keras.layers.Flatten())
 
-    tf_conv_nn.compile(optimizer='adam',loss='categorical_crossentropy',metrics=['accuracy'])
-    tf_conv_nn.fit(x,y,batch_size=batch_size,epochs=eps)
-    return tf_conv_nn
+        for num in hidden_layers:
+            tf_conv_nn.add(keras.layers.Dense(num, activation='relu'))
+        if (dropout):
+            tf_conv_nn.add(keras.layers.Dropout(dropRate))
+        tf_conv_nn.add(keras.layers.Dense(y.shape[1], activation='softmax'))
+
+        tf_conv_nn.compile(optimizer='adam',loss='categorical_crossentropy',metrics=['accuracy'])
+        tf_conv_nn.fit(x,y,batch_size=batch_size,epochs=eps)
+        return tf_conv_nn
+    else:
+        tf_vgg = keras.Sequential()
+        tf_vgg.add(keras.layers.Conv2D(32,3,activation='relu',kernel_initializer='he_uniform',input_shape=(x.shape[1],x.shape[2],x.shape[3])))
+        tf_vgg.add(keras.layers.Conv2D(32,3,activation='relu',kernel_initializer='he_uniform'))
+        tf_vgg.add(keras.layers.MaxPool2D(2))
+        
+        tf_vgg.add(keras.layers.Conv2D(64,3,activation='relu',kernel_initializer='he_uniform'))
+        tf_vgg.add(keras.layers.Conv2D(64,3,activation='relu',kernel_initializer='he_uniform'))
+        tf_vgg.add(keras.layers.MaxPool2D(2))
+
+        # tf_vgg.add(keras.layers.Conv2D(128,3,activation='relu',kernel_initializer='he_uniform'))
+        # tf_vgg.add(keras.layers.Conv2D(128,3,activation='relu',kernel_initializer='he_uniform'))
+        # tf_vgg.add(keras.layers.MaxPool2D(2))
+
+        tf_vgg.add(keras.layers.Flatten())
+        tf_vgg.add(keras.layers.Dense(128, activation='relu'))
+        tf_vgg.add(keras.layers.Dense(y.shape[1], activation='softmax'))
+        
+        tf_vgg.compile(optimizer=keras.optimizers.SGD(lr=0.001, momentum=0.9), loss='categorical_crossentropy', metrics=['accuracy'])
+        tf_vgg.fit(x,y,batch_size=batch_size,epochs=eps)
 
 #=========================<Pipeline Functions>==================================
 
@@ -104,11 +140,14 @@ def getRawData():
         mnist = tf.keras.datasets.fashion_mnist
         (xTrain, yTrain), (xTest, yTest) = mnist.load_data()
     elif DATASET == "cifar_10":
-        pass      # TODO: Add this case.
+        cifar10 = tf.keras.datasets.cifar10
+        (xTrain, yTrain), (xTest, yTest) = cifar10.load_data()
     elif DATASET == "cifar_100_f":
-        pass      # TODO: Add this case.
+        cifar100_f = tf.keras.datasets.cifar100
+        (xTrain, yTrain), (xTest, yTest) = cifar10.load_data(label_mode="fine")
     elif DATASET == "cifar_100_c":
-        pass      # TODO: Add this case.
+        cifar100_f = tf.keras.datasets.cifar100
+        (xTrain, yTrain), (xTest, yTest) = cifar10.load_data(label_mode="coarse")
     else:
         raise ValueError("Dataset not recognized.")
     print("Dataset: %s" % DATASET)
@@ -143,7 +182,7 @@ def preprocessData(raw):
 
 
 
-def trainModel(data):
+def trainModel(data,hyperParams=None):
     xTrain, yTrain = data
     if ALGORITHM == "guesser":
         return None   # Guesser has no model, as it is just guessing.
@@ -152,6 +191,11 @@ def trainModel(data):
         return buildTFNeuralNet(xTrain, yTrain)
     elif ALGORITHM == "tf_conv":
         print("Building and training TF_CNN.")
+        if hyperParams:
+            if (hyperParams["useVGG"]):
+                return buildTFConvNet(xTrain,yTrain,eps=100, batch_size=64)
+            else:
+                return buildTFConvNet(xTrain,yTrain,eps=hyperParams["eps"],hidden_layers=hyperParams["hidden_layers"],batch_size=hyperParams["batch_size"],dropout=hyperParams["dropout"],dropRate=hyperParams["dropRate"],convPoolSeq=hyperParams["convPoolSeq"],convLayer=hyperParams["convLayer"],convSize=hyperParams["convSize"],poolSize=hyperParams["poolSize"])     
         return buildTFConvNet(xTrain, yTrain)
     else:
         raise ValueError("Algorithm not recognized.")
@@ -199,7 +243,22 @@ def evalResults(data, preds):
 def main():
     raw = getRawData()
     data = preprocessData(raw)
-    model = trainModel(data[0])
+    if ("cifar" in DATASET):
+        hyperParams = {
+            "useVGG": True,
+            "eps": 7,
+            "hidden_layers": [128, 64],
+            "batch_size": 64,
+            "dropout": True,
+            "dropRate": 0.15,
+            "convPoolSeq": 2,
+            "convLayer": [64,16],
+            "convSize": [2,2],
+            "poolSize": [2,1]
+        }
+        model = trainModel(data[0],hyperParams)
+    else:
+        model = trainModel(data[0])
     preds = runModel(data[1][0], model)
     evalResults(data[1], preds)
 
