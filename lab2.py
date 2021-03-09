@@ -21,14 +21,14 @@ tf.random.set_seed(1618)
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 # ALGORITHM = "guesser"
-# ALGORITHM = "tf_net"
-ALGORITHM = "tf_conv"
+ALGORITHM = "tf_net"
+# ALGORITHM = "tf_conv"
 
-DATASET = "mnist_d"
+# DATASET = "mnist_d"
 # DATASET = "mnist_f"
 # DATASET = "cifar_10"
-#DATASET = "cifar_100_f"
-#DATASET = "cifar_100_c"
+DATASET = "cifar_100_f"
+# DATASET = "cifar_100_c"
 
 if DATASET == "mnist_d":
     NUM_CLASSES = 10
@@ -89,12 +89,12 @@ def buildTFNeuralNet(x, y, eps = 10, layers=[64], batch_size=64,dropout = False,
     return tf_nn
 
 
-def buildTFConvNet(x, y, eps = 20, hidden_layers=[256],batch_size=64,dropout = True, dropRate = 0.25,convPoolSeq=2,convLayer=[32,64],convSize=[5,5],poolSize=[2,2], saveCheckpoints=False,savePath=None,useVGG=False):
+def buildTFConvNet(x, y, eps = 20, hidden_layers=[256],batch_size=64,dropout = True, dropRate = 0.25,convPoolSeq=2,convLayer=[32,64],convSize=[5,5],poolSize=[2,2], saveCheckpoints=False,savePath=None,useVGG=False,validation_data=None,dataAug=False):
 
-    # print((x.shape[1],x.shape[2],x.shape[3]))
+    print((x.shape[1],x.shape[2],x.shape[3]),y.shape[1])
     if (saveCheckpoints):
         print("Saving Weights during Training: Enabled")
-        cp_callback = [tf.keras.callbacks.ModelCheckpoint(filepath=savePath,save_weights_only=False,verbose=1)]
+        cp_callback = [tf.keras.callbacks.ModelCheckpoint(filepath=savePath,save_weights_only=False,save_best_only=True,verbose=1)]
     else:
         print("Saving Weights during Training: Disabled")
         cp_callback = None
@@ -102,6 +102,7 @@ def buildTFConvNet(x, y, eps = 20, hidden_layers=[256],batch_size=64,dropout = T
         if (os.path.exists(savePath)):
             print("found checkpoint for mnist, loading weights...")
             tf_conv_nn = keras.models.load_model(savePath)
+            return tf_conv_nn
         else:
             print("Saved Model Not found, training from beginning...")
             tf_conv_nn = keras.Sequential()
@@ -130,28 +131,37 @@ def buildTFConvNet(x, y, eps = 20, hidden_layers=[256],batch_size=64,dropout = T
         if (os.path.exists(savePath)):
             print("found checkpoint for vgg, loading weights...")
             tf_vgg = keras.models.load_model(savePath)
+            return tf_vgg
         else:
             print("Saved Model Not found, training from beginning...")
             tf_vgg = keras.Sequential()
-            tf_vgg.add(keras.layers.Conv2D(32,3,activation='relu',kernel_initializer='he_uniform',input_shape=(x.shape[1],x.shape[2],x.shape[3])))
-            tf_vgg.add(keras.layers.Conv2D(32,3,activation='relu',kernel_initializer='he_uniform'))
-            tf_vgg.add(keras.layers.MaxPool2D(2))
+            tf_vgg.add(keras.layers.Conv2D(filters=32,kernel_size=(3,3),activation='relu',kernel_initializer=keras.initializers.GlorotUniform(),padding='same',input_shape=(x.shape[1],x.shape[2],x.shape[3])))
+            tf_vgg.add(keras.layers.MaxPool2D(pool_size=(2,2),padding='same',strides=2))
+            tf_vgg.add(keras.layers.Dropout(0.5))
             
+            tf_vgg.add(keras.layers.Conv2D(filters=64,kernel_size=(3,3),activation='relu',kernel_initializer=keras.initializers.GlorotUniform(),padding='same'))
             tf_vgg.add(keras.layers.Conv2D(64,3,activation='relu',kernel_initializer='he_uniform'))
-            tf_vgg.add(keras.layers.Conv2D(64,3,activation='relu',kernel_initializer='he_uniform'))
-            tf_vgg.add(keras.layers.MaxPool2D(2))
-
-            # tf_vgg.add(keras.layers.Conv2D(128,3,activation='relu',kernel_initializer='he_uniform'))
-            # tf_vgg.add(keras.layers.Conv2D(128,3,activation='relu',kernel_initializer='he_uniform'))
-            # tf_vgg.add(keras.layers.MaxPool2D(2))
+            tf_vgg.add(keras.layers.Conv2D(filters=64,kernel_size=(3,3),activation='relu',kernel_initializer=keras.initializers.GlorotUniform(),padding='same'))
+            tf_vgg.add(keras.layers.MaxPool2D(pool_size=(2,2),padding='same',strides=2))
+            tf_vgg.add(keras.layers.Dropout(0.5))
 
             tf_vgg.add(keras.layers.Flatten())
-            tf_vgg.add(keras.layers.Dense(128, activation='relu'))
+            tf_vgg.add(keras.layers.Dense(512, activation='relu', kernel_initializer='he_uniform'))
+            tf_vgg.add(keras.layers.Dropout(0.5))
             tf_vgg.add(keras.layers.Dense(y.shape[1], activation='softmax'))
             
-            tf_vgg.compile(optimizer=keras.optimizers.SGD(lr=0.001, momentum=0.9), loss='categorical_crossentropy', metrics=['accuracy'])
-        tf_vgg.fit(x,y,batch_size=batch_size,epochs=eps,callbacks=cp_callback)
-
+            tf_vgg.compile(optimizer=keras.optimizers.Adam(learning_rate=0.001), loss='categorical_crossentropy', metrics=['accuracy'])
+        
+        if (dataAug):
+            print("Utilizing Data Augmentation...")
+            data_augmentor = keras.preprocessing.ImageDataGenerator(width_shift_range=0.1, height_shift_range=0.1, horizontal_flip=True)
+            iterator = data_augmentor.flow(x,y,batch_size=batch_size)
+            steps = int(x.shape[0]/batch_size)
+            tf_vgg.fit_generator(iterator,steps_per_epoch=steps,epochs=eps,callbacks=cp_callback,validation_data=validation_data)
+        else:
+            tf_vgg.fit(x,y,batch_size=batch_size,epochs=eps,callbacks=cp_callback,validation_data=validation_data)
+        
+        return tf_vgg
 #=========================<Pipeline Functions>==================================
 
 def getRawData():
@@ -166,10 +176,10 @@ def getRawData():
         (xTrain, yTrain), (xTest, yTest) = cifar10.load_data()
     elif DATASET == "cifar_100_f":
         cifar100_f = tf.keras.datasets.cifar100
-        (xTrain, yTrain), (xTest, yTest) = cifar10.load_data(label_mode="fine")
+        (xTrain, yTrain), (xTest, yTest) = cifar100_f.load_data(label_mode="fine")
     elif DATASET == "cifar_100_c":
-        cifar100_f = tf.keras.datasets.cifar100
-        (xTrain, yTrain), (xTest, yTest) = cifar10.load_data(label_mode="coarse")
+        cifar100_c = tf.keras.datasets.cifar100
+        (xTrain, yTrain), (xTest, yTest) = cifar100_c.load_data(label_mode="coarse")
     else:
         raise ValueError("Dataset not recognized.")
     print("Dataset: %s" % DATASET)
@@ -217,7 +227,7 @@ def trainModel(data,hyperParams=None):
             if (hyperParams["useVGG"]):
                 return buildTFConvNet(xTrain,yTrain,eps=hyperParams["eps"], batch_size=hyperParams["batch_size"],
                                     saveCheckpoints=hyperParams["saveCheckpoints"],
-                                    savePath=hyperParams["savePath"])
+                                    savePath=hyperParams["savePath"],useVGG=hyperParams["useVGG"],validation_data=hyperParams["validation_data"])
             else:
                 return buildTFConvNet(xTrain,yTrain,eps=hyperParams["eps"],hidden_layers=hyperParams["hidden_layers"],
                                         batch_size=hyperParams["batch_size"],dropout=hyperParams["dropout"],
@@ -275,15 +285,27 @@ def main():
     if ("cifar" in DATASET):
         hyperParams = {
             "useVGG": True,
+            "dataAug": False,
             "eps": 100,
-            "batch_size": 64,
+            "batch_size": 128,
             "saveCheckpoints": True,
-            "savePath": "./saved_models/vgg/vgg.h5"
+            "savePath": "./saved_models/vgg_cifar10/vgg_cifar10.h5",
+            "validation_data":(data[1][0],data[1][1])
         }
+        if (DATASET == "cifar10"):
+            pass
+        elif (DATASET == "cifar_100_f"):
+            if (hyperParams["dataAug"]):
+                hyperParams["savePath"] = "./saved_models/vgg_cifar100f_aug/vgg_cifar100f_aug.h5"
+            else:
+                hyperParams["savePath"] = "./saved_models/vgg_cifar100f/vgg_cifar100f.h5"
+        else:
+            hyperParams["savePath"] = "./saved_models/vgg_cifar100c/vgg_cifar100c.h5"
         model = trainModel(data[0],hyperParams)
     else:
         hyperParams = {
             "useVGG": False,
+            "dataAug": False,
             "eps": 20,
             "hidden_layers": [256],
             "batch_size": 64,
@@ -294,8 +316,11 @@ def main():
             "convSize": [5,5],
             "poolSize": [2,2],
             "saveCheckpoints": True,
-            "savePath": "./saved_models/mnist/mnist.h5"
+            "savePath": "./saved_models/cnn_mnist_d/cnn_mnist_d.h5",
+            "validation_data":(data[1][0],data[1][1])
         }
+        if (DATASET == "mnist_f"):
+            hyperParams["savePath"] = "./saved_models/cnn_mnist_f/cnn_mnist_f.h5"
         model = trainModel(data[0],hyperParams)
     # model = test_func(data[0][0],data[0][1])
     # model = keras.models.load_model("./saved_models/vgg/vgg.h5")
