@@ -21,8 +21,8 @@ tf.random.set_seed(1618)
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 # ALGORITHM = "guesser"
-ALGORITHM = "tf_net"
-# ALGORITHM = "tf_conv"
+# ALGORITHM = "tf_net"
+ALGORITHM = "tf_conv"
 
 # DATASET = "mnist_d"
 # DATASET = "mnist_f"
@@ -140,7 +140,7 @@ def buildTFConvNet(x, y, eps = 20, hidden_layers=[256],batch_size=64,dropout = T
             tf_vgg.add(keras.layers.Dropout(0.5))
             
             tf_vgg.add(keras.layers.Conv2D(filters=64,kernel_size=(3,3),activation='relu',kernel_initializer=keras.initializers.GlorotUniform(),padding='same'))
-            tf_vgg.add(keras.layers.Conv2D(64,3,activation='relu',kernel_initializer='he_uniform'))
+            # tf_vgg.add(keras.layers.Conv2D(64,3,activation='relu',kernel_initializer='he_uniform'))
             tf_vgg.add(keras.layers.Conv2D(filters=64,kernel_size=(3,3),activation='relu',kernel_initializer=keras.initializers.GlorotUniform(),padding='same'))
             tf_vgg.add(keras.layers.MaxPool2D(pool_size=(2,2),padding='same',strides=2))
             tf_vgg.add(keras.layers.Dropout(0.5))
@@ -194,8 +194,8 @@ def getRawData():
 def preprocessData(raw):
     ((xTrain, yTrain), (xTest, yTest)) = raw
     if ALGORITHM != "tf_conv":
-        xTrainP = xTrain.reshape((xTrain.shape[0], IS))
-        xTestP = xTest.reshape((xTest.shape[0], IS))
+        xTrainP = xTrain.reshape((xTrain.shape[0], IS*IZ))
+        xTestP = xTest.reshape((xTest.shape[0], IS*IZ))
     else:
         xTrainP = xTrain.reshape((xTrain.shape[0], IH, IW, IZ))
         xTestP = xTest.reshape((xTest.shape[0], IH, IW, IZ))
@@ -264,6 +264,19 @@ def runModel(data, model):
         raise ValueError("Algorithm not recognized.")
 
 
+def generate_confusion_matrix(truth,preds,plot=False):
+    from sklearn import metrics
+
+    confusion_matrix = metrics.confusion_matrix(truth.argmax(axis=1), preds.argmax(axis=1))
+
+    print(confusion_matrix)
+    print(metrics.classification_report(truth.argmax(axis=1), preds.argmax(axis=1)))
+
+    if plot:
+        # metrics.plot_confusion_matrix(truth.argmax(axis=1), preds.argmax(axis=1))
+        sn.heatmap(confusion_matrix, annot=True)
+        plt.show()
+    return
 
 def evalResults(data, preds):
     xTest, yTest = data
@@ -274,8 +287,25 @@ def evalResults(data, preds):
     print("Classifier algorithm: %s" % ALGORITHM)
     print("Classifier accuracy: %f%%" % (accuracy * 100))
     print()
+    generate_confusion_matrix(yTest,preds,plot=True)
 
-
+def plot_results(modelType='cnn',useResults=None):
+    if (modelType=='ann'):
+        useResults=[0.9786,0.8721,0.3749,0.1997,0.01]
+        plt.bar(["mnist_d","mnist_f","cifar_10","cifar_coarse","cifar_fine"],useResults)
+        plt.title("ANN Accuracies")
+        plt.xlabel("Dataset")
+        plt.ylabel("Accuracy")
+        plt.show()
+    elif (modelType=='cnn'):
+        useResults=[0.9935,0.9206,0.7168,0.5391,0.4772]
+        plt.bar(["mnist_d","mnist_f","cifar_10","cifar_coarse","cifar_fine"],useResults)
+        plt.title("CNN Accuracies")
+        plt.xlabel("Dataset")
+        plt.ylabel("Accuracy")
+        plt.show()
+    else:
+        print("Model Type not recognized")
 
 #=========================<Main>================================================
 
@@ -289,11 +319,10 @@ def main():
             "eps": 100,
             "batch_size": 128,
             "saveCheckpoints": True,
-            "savePath": "./saved_models/vgg_cifar10/vgg_cifar10.h5",
             "validation_data":(data[1][0],data[1][1])
         }
-        if (DATASET == "cifar10"):
-            pass
+        if (DATASET == "cifar_10"):
+            hyperParams["savePath"] = "./saved_models/vgg_cifar10/vgg_cifar10.h5"
         elif (DATASET == "cifar_100_f"):
             if (hyperParams["dataAug"]):
                 hyperParams["savePath"] = "./saved_models/vgg_cifar100f_aug/vgg_cifar100f_aug.h5"
@@ -326,7 +355,7 @@ def main():
     # model = keras.models.load_model("./saved_models/vgg/vgg.h5")
     preds = runModel(data[1][0], model)
     evalResults(data[1], preds)
-
+    # plot_results(modelType='cnn')
 
 
 if __name__ == '__main__':
